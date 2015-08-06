@@ -1,6 +1,6 @@
 {
     "uid": "github.com~sourcemint~sm.hoist.VisualComponents~0",
-    "name": "sm.hoist.VisualComponents",
+    "name": "sm.hoist.visualcomponents",
     "version": "0.1.2",
     "repository": "https://github.com/sourcemint/sm.hoist.VisualComponents.git",
     "main": "sm.hoist",
