@@ -9,6 +9,13 @@ function init {
 	function run {
 		BO_format "$VERBOSE" "HEADER" "Hoisting components"
 
+		export DEBUG="pm2:satan"
+		export VERBOSE="1"
+
+		BO_ensure_node
+
+		export _SM_HOIST_EXEC_INTERPRETER_NODE="$(which node)"
+
 		BO_run_iojs "$__BO_DIR__/sm.hoist.js" $@
 
 		BO_format "$VERBOSE" "FOOTER"

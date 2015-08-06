@@ -34,26 +34,45 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 				}
 			}
 
-			API.PM2.connect(function() {
-			  API.PM2.start({
-			  	exec_interpreter: "bash",
-			    script: API.config.source.server.run,
-			    cwd: API.config.source.server.cwd,
-			    name: processId,
-			    instances: 1,
-			    env: env
-			  }, function(err, apps) {
-			  	if (err) return callback(err);
-			    API.PM2.disconnect();
-				if (API.config.source.server.wait) {
-	    			var cb = callback;
-	    			setTimeout(function () {
-	    				cb(null);
-	    			}, parseInt(API.config.source.server.wait) * 1000);
-	    		} else {
-		    		callback(null);
-	    		}
-			  });
+			API.PM2.connect(function (err) {
+			  if (err) return callback(err);
+
+			  API.PM2.delete(processId, function (err) {
+			  	// @ignore err
+
+			  	  var args = {
+				  	exec_interpreter: null,
+				    script: API.config.source.server.run,
+				    cwd: API.config.source.server.cwd,
+				    name: processId,
+				    exec_mode: "fork_mode",
+				    instances: 1,
+				    env: env
+			  	  };
+			  	  args.exec_interpreter = API.config.source.server.runInterpreter || "bash";
+			  	  if (args.exec_interpreter === "node") {
+			  	  	args.exec_interpreter = process.env._SM_HOIST_EXEC_INTERPRETER_NODE;
+			  	  }
+			  	  API.console.debug("Process args:", args);
+				  API.PM2.start(args, function (err, apps) {
+				  	if (err) return callback(err);
+
+
+				    API.PM2.disconnect();
+					if (API.config.source.server.wait) {
+		    			var cb = callback;
+		    			setTimeout(function () {
+
+							API.console.verbose("Started Server: " + processId);
+
+		    				cb(null);
+		    			}, parseInt(API.config.source.server.wait) * 1000);
+		    		} else {
+			    		callback(null);
+		    		}
+				  });
+			  });				  
+			
 			});
 
 		})();
@@ -62,9 +81,11 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 	function stop () {
 		return API.Q.denodeify(function (callback) {
 			API.console.verbose("Stop Server: " + processId);
-			API.PM2.connect(function() {
-			  API.PM2.stop(processId, function(err) {
+			API.PM2.connect(function (err) {
+			  if (err) return callback(err);
+			  API.PM2.stop(processId, function (err) {
 			  	if (err) return callback(err);
+				API.console.verbose("Stopped Server: " + processId);
 			    API.PM2.disconnect();
 			    return callback(null);
 			  });
@@ -169,6 +190,26 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 								attrs[this.name] = this.value;
 							}
 						});
+
+						declarations.resources.push({
+                    		tag: tag.prop("tagName"),
+                    		attributes: attrs
+						});
+                    });
+
+                    $('SCRIPT[src]').each(function () {
+
+                    	var tag = $(this);
+
+						var attrs = {};
+						$.each(this.attributes, function () {
+							if(this.specified) {
+								attrs[this.name] = this.value;
+							}
+						});
+
+						// We ignore scripts inserted by jsdom
+						if (attrs.class === "jsdom") return;
 
 						declarations.resources.push({
                     		tag: tag.prop("tagName"),
@@ -434,7 +475,8 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 						} else
 						if (
-							resource.tag === "IMG"
+							resource.tag === "IMG" ||
+							resource.tag === "SCRIPT"
 						) {
 
 							var sourceUrl = "http://" + API.PATH.join(API.config.source.server.host, resource.attributes.src);
@@ -446,10 +488,18 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 								return downloadUrl(sourceUrl, handler.downloadPath).then(function (status) {
 
 									function finalize (info) {
-										rewrites.push({
-											from: new RegExp('(src\s*=\s*[\'"]{1})' + API.REGEXP_ESCAPE(resource.attributes.src) + '([\'"]{1})', 'g'),
-											to: "$1" + info.relpath + "$2"
-										});
+
+										if (resource.tag === "SCRIPT") {
+											rewrites.push({
+												from: new RegExp('(<\\s*script.*?\\ssrc\\s*=\\s*[\'"]{1})' + API.REGEXP_ESCAPE(resource.attributes.src) + '([\'"]{1}.+?<\\s*\\/\\s*script\\s*>)', 'g'),
+												to: ""
+											});
+										} else {
+											rewrites.push({
+												from: new RegExp('(src\\s*=\\s*[\'"]{1})' + API.REGEXP_ESCAPE(resource.attributes.src) + '([\'"]{1})', 'g'),
+												to: "$1" + info.relpath + "$2"
+											});
+										}
 
 										resource.attributes.src = info.relpath;
 										resource.exportPath = info.realpath;
@@ -498,12 +548,13 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 						html.push('    <link rel="stylesheet" href="' + resource.attributes.href + '">');
 					});
 					html.push('  </head>');
-					html.push('  <body>');
+					if (component.tag !== "BODY") html.push('  <body>');
+
 					var attrs = Object.keys(component.attributes).map(function (name) {
 						return name + '="' + component.attributes[name].replace(/"/g, '\\"') + '"';
 					});
 					attrs = ((attrs.length > 0)? (" " + attrs.join(" ")) : "");
-					html.push('    <' + component.tag + attrs + '>');
+					html.push('    <' + component.tag.toLowerCase() + attrs + '>');
 
 					var impl = component.innerHTML;
 					rewrites.forEach(function (rewrite) {
@@ -511,9 +562,16 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 					});
 					html.push(impl);
 
-					html.push('    </' + component.tag + '>');
-					html.push('  </body>');
+					html.push('    </' + component.tag.toLowerCase() + '>');
+					if (component.tag !== "BODY") html.push('  </body>');
+
+					declarations.resources.forEach(function (resource) {
+						if (resource.tag !== "SCRIPT") return;
+						html.push('    <script src="' + resource.attributes.src + '"></script>');
+					});
+
 					html.push('</html>');
+
 					return html.join("\n");
 				}
 
@@ -568,6 +626,11 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 		return API.Q.fcall(function () {
 
 			var app = API.EXPRESS();
+
+			app.get(/^\/favicon\.ico$/, function (req, res, next) {
+				res.writeHead(200);
+				return res.end();
+			});
 
 			app.get(/^\/404$/, function (req, res, next) {
 				console.log("[Viewer] Url not found: " + req.url);
@@ -667,6 +730,9 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 	return build().then(function () {
 
 		return spin();
+	}).fail(function (err) {
+		console.error("ERROR", err.stack || err);
+		throw err;
 	});
 
 });
