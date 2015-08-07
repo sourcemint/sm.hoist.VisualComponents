@@ -1,55 +1,55 @@
 {
-  "uid": "github.com~sourcemint~sm.hoist.VisualComponents~0",
-  "name": "sm.hoist.visualcomponents",
-  "version": "0.1.4",
-  "repository": "https://github.com/sourcemint/sm.hoist.VisualComponents.git",
-  "main": "sm.hoist",
-  "bin": {
-    "sm.hoist.VisualComponents": "./sm.hoist"
-  },
-  "dependencies": {
-    "bash.origin": "0.1.x",
-    "canonical-json": "0.0.4",
-    "colors": "^1.1.2",
-    "escape-regexp-component": "^1.0.2",
-    "express": "^4.13.3",
-    "jquery": "^2.1.4",
-    "jsdom": "^5.6.1",
-    "nvm": "git://github.com/creationix/nvm",
-    "optimist": "^0.6.1",
-    "org.pinf.genesis.lib": "0.1.x",
-    "pm2": "^0.14.6",
-    "q": "^1.4.1",
-    "q-io": "^1.13.1",
-    "request": "^2.60.0",
-    "rework": "^1.0.1",
-    "rework-plugin-url": "^1.1.0",
-    "send": "^0.13.0"
-  },
-  "config": {
-    "org.pinf.genesis.lib/0": {
-      "api": {
-        "consumes": {
-          "config": "org.pinf.genesis.lib/0/config",
-          "Q": "q",
-          "QFS": "q-io/fs",
-          "PM2": "pm2",
-          "CRYPTO": "crypto",
-          "FS": "fs",
-          "PATH": "path",
-          "JSDOM": "jsdom",
-          "REQUEST": "request",
-          "CJSON": "canonical-json",
-          "REWORK": "rework",
-          "REWORK_PLUGIN_URL": "rework-plugin-url",
-          "URL": "url",
-          "OPTIMIST": "optimist",
-          "HTTP": "http",
-          "EXPRESS": "express",
-          "SEND": "send",
-          "REGEXP_ESCAPE": "escape-regexp-component"
+    "uid": "github.com~sourcemint~sm.hoist.VisualComponents~0",
+    "name": "sm.hoist.visualcomponents",
+    "version": "0.1.5",
+    "repository": "https://github.com/sourcemint/sm.hoist.VisualComponents.git",
+    "main": "sm.hoist",
+    "bin": {
+        "sm.hoist.VisualComponents": "./sm.hoist"
+    },
+    "dependencies": {
+        "bash.origin": "0.1.x",
+        "canonical-json": "0.0.4",
+        "colors": "^1.1.2",
+        "escape-regexp-component": "^1.0.2",
+        "express": "^4.13.3",
+        "jquery": "^2.1.4",
+        "jsdom": "^5.6.1",
+        "nvm": "git://github.com/creationix/nvm",
+        "optimist": "^0.6.1",
+        "org.pinf.genesis.lib": "0.1.x",
+        "pm2": "^0.14.6",
+        "q": "^1.4.1",
+        "q-io": "^1.13.1",
+        "request": "^2.60.0",
+        "rework": "^1.0.1",
+        "rework-plugin-url": "^1.1.0",
+        "send": "^0.13.0"
+    },
+    "config": {
+        "org.pinf.genesis.lib/0": {
+            "api": {
+                "consumes": {
+                    "config": "org.pinf.genesis.lib/0/config",
+                    "Q": "q",
+                    "QFS": "q-io/fs",
+                    "PM2": "pm2",
+                    "CRYPTO": "crypto",
+                    "FS": "fs",
+                    "PATH": "path",
+                    "JSDOM": "jsdom",
+                    "REQUEST": "request",
+                    "CJSON": "canonical-json",
+                    "REWORK": "rework",
+                    "REWORK_PLUGIN_URL": "rework-plugin-url",
+                    "URL": "url",
+                    "OPTIMIST": "optimist",
+                    "HTTP": "http",
+                    "EXPRESS": "express",
+                    "SEND": "send",
+                    "REGEXP_ESCAPE": "escape-regexp-component"
+                }
+            }
         }
-      }
     }
-  }
 }
