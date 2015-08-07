@@ -14,7 +14,13 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 	console.log("Hoist config:", JSON.stringify(API.config, null, 4));
 
 
-	var processId = API.CRYPTO.createHash('sha1').update(__dirname + ":" + API.config.source.server.cwd).digest('hex');
+	var targetBaseUriPath = API.config.target.path;
+	var targetBaseFsPath = targetBaseUriPath;
+	if (API.config.target.id) {
+		targetBaseFsPath = API.PATH.join(targetBaseFsPath, API.config.target.id);
+	}
+
+	var processId = "sm.hoist:" + API.CRYPTO.createHash('sha1').update(__dirname + ":" + API.config.source.server.cwd).digest('hex');
 
 	function start () {
 
@@ -93,13 +99,13 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 		})();
 	}
 
-	function parseComponents () {
+	function parsePages () {
 
 		return API.Q.fcall(function () {
 
 			if (!API.config.source.server) return callback(null);
 			if (!API.config.source.server.host) return callback(null);
-			if (!API.config.components) return callback(null);
+			if (!API.config.pages) return callback(null);
 
 			function fetchUrl (url) {
 				return API.Q.denodeify(function (callback) {
@@ -291,17 +297,17 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 	            })();
 			}
 
-			function exportResources (baseUrl, target, declarations) {
+			function exportResources (baseUrl, declarations) {
 
 				var baseUrlParsed = API.URL.parse(baseUrl);
 
-				var basePath = API.PATH.join(target.path, "resources");
+				var basePath = API.PATH.join(targetBaseFsPath, "resources");
 
 				var filesMoved = {};
-				function getFileStorageHandlerForUrl (url, basePath) {
+				function getFileStorageHandlerForUrl (url, basePath, subPath) {
 
 					var urlParsed = API.URL.parse(url);
-					var localPath = API.PATH.join(basePath, "assets", urlParsed.pathname.substring(1).replace(/\//g, "~"));
+					var localPath = API.PATH.join(basePath, subPath, urlParsed.pathname.substring(1).replace(/\//g, "~"));
 
 					function ensureDirectories () {
 						return API.QFS.exists(API.PATH.dirname(localPath)).then(function (exists) {
@@ -336,7 +342,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 											return API.QFS.move(localPath, path);
 										}).then(function () {
 											return {
-												relpath: "/" + API.PATH.relative(target.path, path),
+												relpath: "/" + API.PATH.relative(targetBaseUriPath, path),
 												realpath: path
 											};
 										});
@@ -382,7 +388,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 								var targetPath = API.PATH.join(basePath, targetFilename + ".css");
 
 								resource.exportPath = targetPath;
-								resource.attributes.href =  "/" + API.PATH.relative(target.path, targetPath);
+								resource.attributes.href =  "/" + API.PATH.relative(targetBaseUriPath, targetPath);
 
 								function parseUrls (css) {
 
@@ -423,7 +429,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 										return (!!urls[id].sourceUrl);
 									}).map(function (id) {
 
-										return getFileStorageHandlerForUrl(urls[id].sourceUrl, basePath).then(function (handler) {
+										return getFileStorageHandlerForUrl(urls[id].sourceUrl, basePath, "assets").then(function (handler) {
 
 											return downloadUrl(urls[id].sourceUrl, handler.downloadPath).then(function (status) {
 
@@ -483,7 +489,11 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 							API.console.verbose("Fetch resource '" + sourceUrl + "' so we can export it");
 
-							return getFileStorageHandlerForUrl(sourceUrl, basePath).then(function (handler) {
+							return getFileStorageHandlerForUrl(
+								sourceUrl,
+								basePath,
+								( resource.tag === "SCRIPT" ? "" : "assets" )
+							).then(function (handler) {
 
 								return downloadUrl(sourceUrl, handler.downloadPath).then(function (status) {
 
@@ -527,9 +537,9 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 				});
 			}
 
-			function exportComponents (target, componentGroupAlias, declarations, rewrites) {
+			function exportComponents (componentGroupAlias, declarations, rewrites) {
 
-				var basePath = API.PATH.join(target.path, "components", componentGroupAlias);
+				var basePath = API.PATH.join(targetBaseFsPath, "components", componentGroupAlias);
 
 				function ensureDirectories () {
 					return API.QFS.exists(basePath).then(function (exists) {
@@ -592,10 +602,10 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 				});
 			}
 
-			var components = {};
-			return API.Q.all(Object.keys(API.config.components).map(function (alias) {
+			var pages = {};
+			return API.Q.all(Object.keys(API.config.pages).map(function (alias) {
 
-				var url = "http://" + API.config.source.server.host + API.config.components[alias].source;
+				var url = "http://" + API.config.source.server.host + API.config.pages[alias].source;
 
 				API.console.verbose("Fetch '" + url + "'");
 
@@ -603,11 +613,11 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 					return parseHtml(url, html).then(function (declarations) {
 
-						return exportResources(API.PATH.dirname(url), API.config.target, declarations).then(function (rewrites) {
+						return exportResources(API.PATH.dirname(url), declarations).then(function (rewrites) {
 
-							return exportComponents(API.config.target, alias, declarations, rewrites).then(function (basePath) {
+							return exportComponents(alias, declarations, rewrites).then(function (basePath) {
 
-								components[alias] = declarations;
+								pages[alias] = declarations;
 
 								var defintionPath = basePath + ".json";
 
@@ -617,7 +627,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 					});
 				});
 			})).then(function () {
-				return components;
+				return pages;
 			});
 		});
 	}
@@ -644,37 +654,38 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 				if (path) {
 					return API.SEND(req, path, {
-						root: API.config.target.path
+						root: targetBaseUriPath
 					}).on("error", next).pipe(res);
 				}
 
 				function buildHomePage () {
 
-					var basePath = API.PATH.join(API.config.target.path, "components");
+					var descriptor = require(API.PATH.join(targetBaseFsPath, "hoisted.json"));
 
-					return API.QFS.list(basePath).then(function (filenames) {
+					var html = [];
 
-						var html = [];
+					html.push('<ul>');
 
-						html.push('<ul>');
+					Object.keys(descriptor.pages).forEach(function (pageAlias) {
 
-						filenames.forEach(function (filename) {
-							if (/\.json$/.test(filename)) return;
+						Object.keys(descriptor.pages[pageAlias].components).forEach(function (componentAlias) {
 
-							var declarations = require(API.PATH.join(basePath, filename));
+							var component = descriptor.pages[pageAlias].components[componentAlias];
 
-							Object.keys(declarations.components).forEach(function (alias) {
-								html.push('<li><a href="/' + API.PATH.relative(
-									API.config.target.path,
-									declarations.components[alias].exportPath
-								) + '">' + filename.replace(/\.json$/, "") + ' / ' + alias + '</a></li>');
-							});
+							html.push([
+								'<li><a href="' + component.uriHtmlPath + '">',
+								component.uriHtmlPath
+									.replace(/\/components\//, "/")
+									.replace(/^(\/|\.htm$)/g, "")
+									.replace(/\//g, " > "),
+								'</a></li>'
+							].join(""));
 						});
-
-						html.push('</ul>');
-
-						return html.join("\n");
 					});
+
+					html.push('</ul>');
+
+					return API.Q.resolve(html.join("\n"));
 				}
 
 				return buildHomePage().then(function (html) {
@@ -703,12 +714,75 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 			return API.Q.resolve();
 		}
 
+		function writeDescriptorFile (pageDefinitions) {
+
+			var descriptor = {
+				pages: {}
+			};
+
+			Object.keys(pageDefinitions).forEach(function (pageAlias) {
+
+				var declarations = pageDefinitions[pageAlias];
+
+				descriptor.pages[pageAlias] = {
+					"resources": [],
+					"componentsDescriptorPath": "{{__DIRNAME__}}/components/" + pageAlias + ".json",
+					"components": {}
+				};
+
+				declarations.resources.forEach(function (resource) {
+					if (
+						resource.tag === "LINK" &&
+						resource.attributes.rel === "stylesheet"
+					) {
+						descriptor.pages[pageAlias].resources.push({
+							"type": "css",
+							"uriPath": resource.attributes.href,
+							"fsPath": "{{__DIRNAME__}}/" + API.PATH.relative(
+								targetBaseFsPath,
+								resource.exportPath
+							)
+						});
+					} else
+					if (resource.tag === "SCRIPT") {
+						descriptor.pages[pageAlias].resources.push({
+							"type": "js",
+							"uriPath": resource.attributes.src,
+							"fsPath": "{{__DIRNAME__}}/" + API.PATH.relative(
+								targetBaseFsPath,
+								resource.exportPath
+							)
+						});
+					}
+				});
+
+				Object.keys(declarations.components).forEach(function (componentAlias) {
+					descriptor.pages[pageAlias].components[componentAlias] = {
+						"uriHtmlPath": "/" + API.PATH.relative(
+							targetBaseUriPath,
+							declarations.components[componentAlias].exportPath
+						),
+						"fsHtmlPath": "{{__DIRNAME__}}/" + API.PATH.relative(
+							targetBaseFsPath,
+							declarations.components[componentAlias].exportPath
+						)
+					};
+				});
+			});
+
+			return API.QFS.write(
+				API.PATH.join(targetBaseFsPath, "hoisted.json"),
+				JSON.stringify(descriptor, null, 4)
+			);
+		}
+
 		return start().then(function () {
 
-			return parseComponents().then(function (componentDefinitions) {
+			return parsePages().then(function (pageDefinitions) {
 
-				API.console.verbose("Component definitions:", JSON.stringify(componentDefinitions, null, 4));
+				API.console.verbose("Page definitions:", JSON.stringify(pageDefinitions, null, 4));
 
+				return writeDescriptorFile(pageDefinitions);
 			});
 
 		}).then(function () {

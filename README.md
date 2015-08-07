@@ -35,7 +35,7 @@ sm.hoist.VisualComponents
 	    			}
 	    		}
 	    	},
-	    	"components": {
+	    	"pages": {
 	    		"Home": {
 	    			"source": "/"
     			}
@@ -61,5 +61,6 @@ npm run-script build-how
 ````
 export DEBUG=1
 export VERBOSE=1
-pm2 logs
+
+pm2 logs --lines 500 | grep 'sm.hoist'
 ````
