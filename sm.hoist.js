@@ -72,7 +72,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							API.console.verbose("Started Server: " + processId);
 
 		    				cb(null);
-		    			}, parseInt(API.config.source.server.wait) * 1000);
+		    			}, parseInt(API.config.source.server.wait) * 3000);
 		    		} else {
 			    		callback(null);
 		    		}
@@ -108,26 +108,42 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 			if (!API.config.pages) return callback(null);
 
 			function fetchUrl (url) {
-				return API.Q.denodeify(function (callback) {
-					return API.REQUEST({
-						uri: url
-					}, function (err, response, body) {
-						if (err) return callback(err);
-						if (response.statusCode !== 200) {
-							var err = new Error("Got status '" + response.statusCode + "' while fetching '" + url + "'");
-							err.code = response.statusCode;
-							return callback(err);
+
+				function attempt () {
+					if (!attempt.count) attempt.count = 0;
+					return API.Q.denodeify(function (callback) {
+						return API.REQUEST({
+							uri: url
+						}, function (err, response, body) {
+							if (err) return callback(err);
+							if (response.statusCode !== 200) {
+								var err = new Error("Got status '" + response.statusCode + "' while fetching '" + url + "'");
+								err.code = response.statusCode;
+								return callback(err);
+							}
+							return callback(null, body);
+						});
+					})().fail(function (err) {
+						// If we cannot connect at all we assume server is not yet up
+						// and keep trying until it works.
+						if (err.code === "ECONNREFUSED") {
+							console.error("Error: Could not connect to '" + url + "'! See 'pm2 logs " + processId + "'");
+							return API.Q.delay(1000).then(attempt);
 						}
-						return callback(null, body);
+						throw err;
 					});
-				})();
+				}
+
+				return attempt();
 			}
 
 			function downloadUrl (url, path) {
 				return API.Q.denodeify(function (callback) {
 
+					console.log("Downloading '" + url + "' to '" + path + "'");
+
 					var request = API.REQUEST.get(url);
-					request.pause();
+//					request.pause();
 					request.on('error', function (err) {
 						if (!callback) return;
 						callback(err);
@@ -140,15 +156,17 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							callback = null;
 							return;
 						}
+						console.log("response headers for '" + url + "'", resp.headers);
 						var stream = API.FS.createWriteStream(path);
-						stream.on("close", function () {
+						stream.on("finish", function () {
 							if (!callback) return;
+							console.log("Download of '" + url + "' to '" + path + "' done");
 							callback(null, resp.statusCode);
 							callback = null;
 							return;
 						});
 						request.pipe(stream);
-						request.resume();
+//						request.resume();
 					});						
 				})();
 			}
