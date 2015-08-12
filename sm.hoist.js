@@ -107,6 +107,9 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 			if (!API.config.source.server.host) return callback(null);
 			if (!API.config.pages) return callback(null);
 
+			var filesDownloading = {};
+			var filesMoved = {};
+
 			function fetchUrl (url) {
 
 				function attempt () {
@@ -130,6 +133,11 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							console.error("Error: Could not connect to '" + url + "'! See 'pm2 logs " + processId + "'");
 							return API.Q.delay(1000).then(attempt);
 						}
+						// If we get a 404 we assume server is not yet up properly as page should be there.
+						if (err.code === 404) {
+							console.error("Error: Got 404 for '" + url + "'! See 'pm2 logs " + processId + "'");
+							return API.Q.delay(1000).then(attempt);
+						}
 						throw err;
 					});
 				}
@@ -138,37 +146,40 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 			}
 
 			function downloadUrl (url, path) {
-				return API.Q.denodeify(function (callback) {
+				if (!filesDownloading[url + ":" + path]) {
+					filesDownloading[url + ":" + path] = API.Q.denodeify(function (callback) {
 
-					console.log("Downloading '" + url + "' to '" + path + "'");
+						console.log("Downloading '" + url + "' to '" + path + "'");
 
-					var request = API.REQUEST.get(url);
-//					request.pause();
-					request.on('error', function (err) {
-						if (!callback) return;
-						callback(err);
-						callback = null;
-					});
-					request.on('response', function (resp) {
-						if (resp.statusCode !== 200) {
+						var request = API.REQUEST.get(url);
+	//					request.pause();
+						request.on('error', function (err) {
 							if (!callback) return;
-							callback(null, resp.statusCode);
+							callback(err);
 							callback = null;
-							return;
-						}
-						console.log("response headers for '" + url + "'", resp.headers);
-						var stream = API.FS.createWriteStream(path);
-						stream.on("finish", function () {
-							if (!callback) return;
-							console.log("Download of '" + url + "' to '" + path + "' done");
-							callback(null, resp.statusCode);
-							callback = null;
-							return;
 						});
-						request.pipe(stream);
-//						request.resume();
-					});						
-				})();
+						request.on('response', function (resp) {
+							if (resp.statusCode !== 200) {
+								if (!callback) return;
+								callback(null, resp.statusCode);
+								callback = null;
+								return;
+							}
+							console.log("response headers for '" + url + "'", resp.headers);
+							var stream = API.FS.createWriteStream(path);
+							stream.on("finish", function () {
+								if (!callback) return;
+								console.log("Download of '" + url + "' to '" + path + "' done");
+								callback(null, resp.statusCode);
+								callback = null;
+								return;
+							});
+							request.pipe(stream);
+	//						request.resume();
+						});						
+					})();
+				}
+				return filesDownloading[url + ":" + path];
 			}
 
 			function parseHtml (url, html) {
@@ -252,6 +263,12 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							}
 						});
 
+						if (/^https?:\/\//.test(attrs.src)) {
+							// TODO: Optionally download external resource and use locally instead
+							//       of keeping external URL in source.
+							return;
+						}
+
 						declarations.resources.push({
                     		tag: tag.prop("tagName"),
                     		attributes: attrs
@@ -315,13 +332,30 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 	            })();
 			}
 
-			function exportResources (baseUrl, declarations) {
+			function exportResources (originUrl, baseUrl, declarations) {
 
 				var baseUrlParsed = API.URL.parse(baseUrl);
-
 				var basePath = API.PATH.join(targetBaseFsPath, "resources");
 
-				var filesMoved = {};
+				function makeSourceUrl (url) {
+					var sourceUrl = null;
+					if (/^\//.test(url)) {
+						sourceUrl = API.PATH.join(originUrl, url).replace(/^http:\//, "http://");;
+					} else
+					if (/^\./.test(url)) {
+						sourceUrl = API.PATH.join(baseUrl, url).replace(/^http:\//, "http://");;
+					} else {
+						throw new Error("Cannot make source url from non-local url '" + url + "'!");
+					}
+					var sourceUrlParsed = API.URL.parse(sourceUrl);
+					if (sourceUrlParsed.host !== baseUrlParsed.host) {
+						// The host has changed after normalizing the path
+						// so we assume it is an invalud URL
+						sourceUrl = "";
+					}
+					return sourceUrl;
+				}
+
 				function getFileStorageHandlerForUrl (url, basePath, subPath) {
 
 					var urlParsed = API.URL.parse(url);
@@ -417,22 +451,11 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 									})
 									.use(API.REWORK_PLUGIN_URL(function(url) {
 
-										var sourceUrl = url;
-
-										if (/^(\/|\.)/.test(sourceUrl)) {
+										if (/^(\/|\.)/.test(url)) {
 											// Only process URLs pointing to our server.
 
-											// Get source URL and ensure it is valid
-											var sourceUrl = API.PATH.join(baseUrl, url).replace(/^http:\//, "http://");
-											var sourceUrlParsed = API.URL.parse(sourceUrl);
-											if (sourceUrlParsed.host !== baseUrlParsed.host) {
-												// The host has changed after normalizing the path
-												// so we assume it is an invalud URL
-												sourceUrl = "";
-											}
-
 											urls[url] = {
-												sourceUrl: sourceUrl
+												sourceUrl: makeSourceUrl(url)
 											};
 										}
 
@@ -452,6 +475,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 											return downloadUrl(urls[id].sourceUrl, handler.downloadPath).then(function (status) {
 
 												if (status !== 200) {
+													console.log("Warning: Got status '" + status + "' for url '" + urls[id].sourceUrl + "'");
 													urls[id].relpath = "/404?url=" + urls[id].sourceUrl;
 													return;
 												}
@@ -503,7 +527,14 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							resource.tag === "SCRIPT"
 						) {
 
-							var sourceUrl = "http://" + API.PATH.join(API.config.source.server.host, resource.attributes.src);
+							var url = resource.attributes.src;
+							if (/^https?:\/\//.test(url)) {
+								// TODO: Optionally download external resource and use locally instead
+								//       of keeping external URL in source.
+								return;
+							}
+
+							var sourceUrl = makeSourceUrl(url);
 
 							API.console.verbose("Fetch resource '" + sourceUrl + "' so we can export it");
 
@@ -534,6 +565,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 									}
 
 									if (status !== 200) {
+										console.log("Warning: Got status '" + status + "' for url '" + sourceUrl + "'");
 										finalize({
 											relpath: "404?url=" + sourceUrl,
 											realpath: ""
@@ -623,7 +655,8 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 			var pages = {};
 			return API.Q.all(Object.keys(API.config.pages).map(function (alias) {
 
-				var url = "http://" + API.config.source.server.host + API.config.pages[alias].source;
+				var origin = "http://" + API.config.source.server.host;
+				var url = origin + API.config.pages[alias].source;
 
 				API.console.verbose("Fetch '" + url + "'");
 
@@ -631,7 +664,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 					return parseHtml(url, html).then(function (declarations) {
 
-						return exportResources(API.PATH.dirname(url), declarations).then(function (rewrites) {
+						return exportResources(origin, API.PATH.dirname(url), declarations).then(function (rewrites) {
 
 							return exportComponents(alias, declarations, rewrites).then(function (basePath) {
 

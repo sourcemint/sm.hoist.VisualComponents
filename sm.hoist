@@ -9,7 +9,7 @@ function init {
 	function run {
 		BO_format "$VERBOSE" "HEADER" "Hoisting components"
 
-		export DEBUG="pm2:satan"
+#		export DEBUG="pm2:satan"
 		export VERBOSE="1"
 
 		BO_ensure_node
