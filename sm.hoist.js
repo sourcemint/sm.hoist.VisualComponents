@@ -165,8 +165,10 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 								callback = null;
 								return;
 							}
-							console.log("response headers for '" + url + "'", resp.headers);
-							var stream = API.FS.createWriteStream(path);
+							if (API.DEBUG) console.log("response headers for '" + url + "'", resp.headers);
+							var stream = API.FS.createWriteStream(path, {
+								flags: 'w'
+							});
 							stream.on("finish", function () {
 								if (!callback) return;
 								console.log("Download of '" + url + "' to '" + path + "' done");
@@ -598,54 +600,137 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 					});
 				}
 
-				function generateHtml (component) {
-					var html = [];
-					html.push('<!DOCTYPE HTML>');
-					html.push('<html>');
-					html.push('  <head>');
-					declarations.resources.forEach(function (resource) {
-						if (resource.tag !== "LINK") return;
-						html.push('    <link rel="stylesheet" href="' + resource.attributes.href + '">');
+				function generateComponentFormats (alias, component) {
+
+					function getComponentHtml () {
+						var data = [];
+
+						var attrs = Object.keys(component.attributes).map(function (name) {
+							return name + '="' + component.attributes[name].replace(/"/g, '\\"') + '"';
+						});
+						attrs = ((attrs.length > 0)? (" " + attrs.join(" ")) : "");
+						data.push('    <' + component.tag.toLowerCase() + attrs + '>');
+
+						var impl = component.innerHTML;
+						rewrites.forEach(function (rewrite) {
+							impl = impl.replace(rewrite.from, rewrite.to);
+						});
+						data.push(impl);
+
+						data.push('    </' + component.tag.toLowerCase() + '>');
+
+						return data.join("\n");
+					}
+
+					function generateHtml (component) {
+						return API.Q.fcall(function () {
+							var data = [];
+							data.push('<!DOCTYPE HTML>');
+							data.push('<html>');
+
+							data.push('  <head>');
+							declarations.resources.forEach(function (resource) {
+								if (resource.tag !== "LINK") return;
+								data.push('    <link rel="stylesheet" href="' + resource.attributes.href + '">');
+							});
+							data.push('  </head>');
+
+							if (component.tag !== "BODY") data.push('  <body>');
+							data.push(getComponentHtml());
+							if (component.tag !== "BODY") data.push('  </body>');
+
+							declarations.resources.forEach(function (resource) {
+								if (resource.tag !== "SCRIPT") return;
+								data.push('    <script src="' + resource.attributes.src + '"></script>');
+							});
+
+							data.push('</html>');
+
+							return data.join("\n");
+						});
+					}
+
+					function camelCase (input) { 
+					    return input.toLowerCase().replace(/-(.)/g, function(match, group1) {
+					        return group1.toUpperCase();
+					    });
+					}
+
+					function generateJSX (component) {
+						return API.Q.fcall(function () {
+							var data = [];
+							data.push("module.exports = function (Context) {");
+							data.push("  // TODO: Remove this once we can inject 'React' automatically at build time.");
+							data.push("  var React = Context.REACT;");
+							data.push("  return (");
+
+							var html = getComponentHtml();
+							html = html.replace(/(<|\s)class(\s*=\s*")/g, "$1className$2");
+							html = html.replace(/(<\s*(?:img|input)\s+[^>]+?)(?:\/)?(\s*>)/g, "$1/$2");
+
+							var re = /(<|\s)component\s*:\s*([\w-]+\s*=\s*"[^"]*"(?:\/?>|\s))/g;
+							var m;
+							while (m = re.exec(html)) {
+								html = html.replace(m[0], m[1] + "data-component-" + m[2]);
+							}
+
+							re = /(<|\sstyle\s*=\s*)"([^"]*)"((?:\/?>|\s))/g;
+							while (m = re.exec(html)) {
+								var attributes = {};
+								var re2 = /(?:^|;)\s*([^:;]+)\s*:\s*(.+?)(?:;|$)/g
+								var m2;
+								while (m2 = re2.exec(m[2])) {
+									attributes[camelCase(m2[1])] = m2[2];
+								}
+
+								html = html.replace(m[0], m[1] + "{" + JSON.stringify(attributes) + "}" + m[3]);
+							}
+
+							data.push(html);
+
+							data.push("  );");
+							data.push("}");
+
+							return data.join("\n");
+						});
+					}
+
+					return generateHtml(component).then(function (data) {
+
+						var targetPath = API.PATH.join(basePath, alias + ".htm");
+
+						declarations.components[alias].exportPath = targetPath;
+
+						console.log("Writing component '" + alias + "' to '" + targetPath + "': ");
+
+						return API.QFS.write(targetPath, data);
+
+					}).then(function () {
+
+						return generateJSX(component).then(function (data) {
+
+							var targetPath = API.PATH.join(basePath, alias + ".cjs.jsx");
+
+							declarations.components[alias].exportPath = targetPath;
+
+							console.log("Writing component '" + alias + "' to '" + targetPath + "':");
+
+							return API.QFS.write(targetPath, data);
+						});
 					});
-					html.push('  </head>');
-					if (component.tag !== "BODY") html.push('  <body>');
-
-					var attrs = Object.keys(component.attributes).map(function (name) {
-						return name + '="' + component.attributes[name].replace(/"/g, '\\"') + '"';
-					});
-					attrs = ((attrs.length > 0)? (" " + attrs.join(" ")) : "");
-					html.push('    <' + component.tag.toLowerCase() + attrs + '>');
-
-					var impl = component.innerHTML;
-					rewrites.forEach(function (rewrite) {
-						impl = impl.replace(rewrite.from, rewrite.to);
-					});
-					html.push(impl);
-
-					html.push('    </' + component.tag.toLowerCase() + '>');
-					if (component.tag !== "BODY") html.push('  </body>');
-
-					declarations.resources.forEach(function (resource) {
-						if (resource.tag !== "SCRIPT") return;
-						html.push('    <script src="' + resource.attributes.src + '"></script>');
-					});
-
-					html.push('</html>');
-
-					return html.join("\n");
 				}
 
 				return ensureDirectories().then(function () {
 
 					return API.Q.all(Object.keys(declarations.components).map(function (alias) {
 
-						var targetPath = API.PATH.join(basePath, alias + ".htm");
-
-						declarations.components[alias].exportPath = targetPath;
+						return generateComponentFormats(
+							alias,
+							declarations.components[alias]
+						);
 
 						// https://github.com/pocketjoso/penthouse
 
-						return API.QFS.write(targetPath, generateHtml(declarations.components[alias]));
 					}));
 				}).then(function () {
 					return basePath;
