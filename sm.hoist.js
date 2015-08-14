@@ -188,7 +188,17 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
                 API.console.verbose("html", html);
 
-				function parse (loaded, window, declarations) {
+                function parseRawHtml (html, declarations) {
+
+                	var m = null;
+
+                	m = html.match(/^\s*(<!DOCTYPE\s*(.+)\s*>)\s*(?:\n|$)/, html);
+                	if (m) {
+                		declarations.schemas["DOCTYPE"] = m[2];
+                	}
+                }
+
+				function parseInstanciatedHtml (loaded, window, declarations) {
 
                     const $ = window.jQuery;
 
@@ -208,10 +218,13 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
                     	var id = attrs["component:id"];
                     	delete attrs["component:id"];
 
+                    	var componentHtml = tag.html();
+                    	componentHtml = componentHtml.replace(/<script class="jsdom" src="[^"]+"><\/script>/g, "");
+
                     	declarations.components[id] = {
                     		tag: tag.prop("tagName"),
                     		attributes: attrs,
-                    		innerHTML: tag.html()
+                    		innerHTML: componentHtml
                     	};
                     });
 
@@ -278,6 +291,14 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
                     });
 				}
 
+                var declarations = {
+                	schemas: {},
+                	resources: [],
+                	components: {}
+                };
+
+				parseRawHtml(html, declarations);
+
 				return API.Q.denodeify(function (callback) {
 
 					var virtualConsole = API.JSDOM.createVirtualConsole();
@@ -312,14 +333,9 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 		                	try {
 			                    const $ = window.jQuery;
 
-		                        var declarations = {
-		                        	resources: [],
-		                        	components: {}
-		                        };
-
 								$(function () {
 
-			                        parse(loaded, window, declarations);
+			                        parseInstanciatedHtml(loaded, window, declarations);
 
 			                        return callback(null, declarations);
 								});
@@ -625,26 +641,36 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 					function generateHtml (component) {
 						return API.Q.fcall(function () {
 							var data = [];
-							data.push('<!DOCTYPE HTML>');
-							data.push('<html>');
 
-							data.push('  <head>');
-							declarations.resources.forEach(function (resource) {
-								if (resource.tag !== "LINK") return;
-								data.push('    <link rel="stylesheet" href="' + resource.attributes.href + '">');
-							});
-							data.push('  </head>');
+							data.push('<!DOCTYPE ' + (declarations.schemas.DOCTYPE || "HTML") + '>');
 
-							if (component.tag !== "BODY") data.push('  <body>');
-							data.push(getComponentHtml());
-							if (component.tag !== "BODY") data.push('  </body>');
+							if (component.tag === "HTML") {
 
-							declarations.resources.forEach(function (resource) {
-								if (resource.tag !== "SCRIPT") return;
-								data.push('    <script src="' + resource.attributes.src + '"></script>');
-							});
+								data.push(getComponentHtml());
 
-							data.push('</html>');
+							} else {
+
+								data.push('<html>');
+
+								data.push('  <head>');
+								declarations.resources.forEach(function (resource) {
+									if (resource.tag !== "LINK") return;
+									data.push('    <link rel="stylesheet" href="' + resource.attributes.href + '">');
+								});
+								data.push('  </head>');
+
+								if (component.tag !== "BODY") data.push('  <body>');
+								data.push(getComponentHtml());
+								if (component.tag !== "BODY") data.push('  </body>');
+
+								declarations.resources.forEach(function (resource) {
+									if (resource.tag !== "SCRIPT") return;
+									data.push('    <script src="' + resource.attributes.src + '"></script>');
+								});
+
+								data.push('</html>');
+
+							}
 
 							return data.join("\n");
 						});
@@ -695,11 +721,16 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 						});
 					}
 
+					if (!declarations.components[alias].exportPaths) {
+						declarations.components[alias].exportPaths = {};
+					}
+
 					return generateHtml(component).then(function (data) {
 
 						var targetPath = API.PATH.join(basePath, alias + ".htm");
 
 						declarations.components[alias].exportPath = targetPath;
+						declarations.components[alias].exportPaths["htm"] = targetPath;
 
 						console.log("Writing component '" + alias + "' to '" + targetPath + "': ");
 
@@ -711,7 +742,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 							var targetPath = API.PATH.join(basePath, alias + ".cjs.jsx");
 
-							declarations.components[alias].exportPath = targetPath;
+							declarations.components[alias].exportPaths["cjs.jsx"] = targetPath;
 
 							console.log("Writing component '" + alias + "' to '" + targetPath + "':");
 
