@@ -215,6 +215,10 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							}
 						});
 
+						if (attrs["component:view"]) {
+							return;
+						}
+
                     	var id = attrs["component:id"];
                     	delete attrs["component:id"];
 
