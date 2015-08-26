@@ -912,7 +912,8 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							"fsPath": "{{__DIRNAME__}}/" + API.PATH.relative(
 								targetBaseFsPath,
 								resource.exportPath
-							)
+							),
+							"bundle": (resource.attributes["component:bundle"] || "")
 						});
 					} else
 					if (resource.tag === "SCRIPT") {
@@ -922,7 +923,8 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							"fsPath": "{{__DIRNAME__}}/" + API.PATH.relative(
 								targetBaseFsPath,
 								resource.exportPath
-							)
+							),
+							"bundle": (resource.attributes["component:bundle"] || "")
 						});
 					}
 				});
