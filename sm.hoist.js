@@ -210,7 +210,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
                     API.console.verbose("loaded", loaded);
 
-                    $('[component\\3Aid]').each(function () {
+                    $('[data-component-id]').each(function () {
 
                     	var tag = $(this);
 
@@ -221,20 +221,42 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							}
 						});
 
-						if (attrs["component:view"]) {
+						if (attrs["data-component-view"]) {
 							return;
 						}
 
-                    	var id = attrs["component:id"];
-                    	delete attrs["component:id"];
+                    	var id = attrs["data-component-id"];
+                    	delete attrs["data-component-id"];
+
+
+                    	var anchors = {};
+	                    $('[data-component-anchor-id]', tag).each(function () {
+	                    	var anchor = $(this);
+							var attrs = {};
+							$.each(this.attributes, function () {
+								if(this.specified) {
+									attrs[this.name] = (""+this.value).replace(/(^\s+|\s+$)/g, "");
+								}
+							});
+	                    	anchors[attrs["data-component-anchor-id"]] = {
+	                    		tag: anchor.prop("tagName"),
+	                    		attributes: attrs
+	                    	}
+	                    	// We erase the content of the anchor as it will be replaced later.
+	                    	anchor.html("");
+	                    });
+
 
                     	var componentHtml = tag.html();
+                    	// Remove `jsdom` dirt
+                    	// TODO: Add method to `jsdom` to remove dirt it adds itself so implementation does not drift
                     	componentHtml = componentHtml.replace(/<script class="jsdom" src="[^"]+"><\/script>/g, "");
 
                     	declarations.components[id] = {
                     		tag: tag.prop("tagName"),
                     		attributes: attrs,
-                    		innerHTML: componentHtml
+                    		innerHTML: componentHtml,
+                    		anchors: anchors
                     	};
                     });
 
@@ -320,6 +342,9 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 			        return API.JSDOM.env({
 			        	url: url,
+			        	headers: {
+			        		"X-Component-Namespace": ";convert-to-data;"
+			        	},
 			        	scripts: [
 	                    	'file://' + require.resolve("jquery/dist/jquery.js")
                     	],
@@ -577,9 +602,16 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 									function finalize (info) {
 
 										if (resource.tag === "SCRIPT") {
+// TODO: Only erase scripts if requested in config for page/component
+/*
 											rewrites.push({
 												from: new RegExp('(<\\s*script.*?\\ssrc\\s*=\\s*[\'"]{1})' + API.REGEXP_ESCAPE(resource.attributes.src) + '([\'"]{1}.+?<\\s*\\/\\s*script\\s*>)', 'g'),
 												to: ""
+											});
+*/
+											rewrites.push({
+												from: new RegExp('(<\\s*script.*?\\ssrc\\s*=\\s*[\'"]{1})' + API.REGEXP_ESCAPE(resource.attributes.src) + '([\'"]{1}.+?<\\s*\\/\\s*script\\s*>)', 'g'),
+												to: "$1" + info.relpath + "$2"
 											});
 										} else {
 											rewrites.push({
@@ -704,10 +736,13 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							html = html.replace(/(<|\s)class(\s*=\s*")/g, "$1className$2");
 							html = html.replace(/(<\s*(?:img|input)\s+[^>]+?)(?:\/)?(\s*>)/g, "$1/$2");
 
-							var re = /(<|\s)component\s*:\s*([\w-]+\s*=\s*"[^"]*"(?:\/?>|\s))/g;
+							var re = /(<|\s)component\s*:\s*([^=]+)(\s*=\s*"[^"]*"(?:\/?>|\s))/g;
 							var m;
 							while (m = re.exec(html)) {
-								html = html.replace(m[0], m[1] + "data-component-" + m[2]);
+								html = html.replace(
+								    new RegExp(API.REGEXP_ESCAPE(m[0]), "g"),
+								    m[1] + "data-component-" + m[2].replace(/:/g, "-") + m[3]
+								);
 							}
 
 							re = /(<|\sstyle\s*=\s*)"([^"]*)"((?:\/?>|\s))/g;
@@ -928,7 +963,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 								targetBaseFsPath,
 								resource.exportPath
 							),
-							"bundle": (resource.attributes["component:bundle"] || "")
+							"bundle": (resource.attributes["data-component-bundle"] || "")
 						});
 					} else
 					if (resource.tag === "SCRIPT") {
@@ -939,7 +974,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 								targetBaseFsPath,
 								resource.exportPath
 							),
-							"bundle": (resource.attributes["component:bundle"] || "")
+							"bundle": (resource.attributes["data-component-bundle"] || "")
 						});
 					}
 				});
