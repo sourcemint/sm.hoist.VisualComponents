@@ -1,6 +1,9 @@
 
-if (!process.argv[2]) throw new Error("Must sepcify program descriptor path argument!");
-process.env.PINF_PROGRAM_PATH = require("path").resolve(process.argv[2]);
+
+if (require.main === module) {
+	if (!process.argv[2]) throw new Error("Must sepcify program descriptor path argument!");
+	process.env.PINF_PROGRAM_PATH = require("path").resolve(process.argv[2]);
+}
 
 
 require('org.pinf.genesis.lib').forModule(require, module, function (API, exports) {
@@ -26,7 +29,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 		return API.Q.denodeify(function (callback) {
 
-			if (!API.config.source.server) return callback(null);
+			if (!API.config.source.server.run) return callback(null);
 
 			API.console.verbose("Start Server: " + processId);
 
@@ -86,6 +89,9 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 	function stop () {
 		return API.Q.denodeify(function (callback) {
+
+			if (!API.config.source.server.run) return callback(null);
+
 			API.console.verbose("Stop Server: " + processId);
 			API.PM2.connect(function (err) {
 			  if (err) return callback(err);
@@ -777,6 +783,15 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 				var origin = "http://" + API.config.source.server.host;
 				var url = origin + API.config.pages[alias].source;
+				
+				if (
+					API.OPTIMIST.argv.uri &&
+					API.config.pages[alias].source !== API.OPTIMIST.argv.uri
+				) {
+					// The page uri does not match the one requested on the command-line.
+					API.console.verbose("Skip: Fetch '" + url + "' because only '" + API.OPTIMIST.argv.uri + "' was requested by '--uri' command-line option!");
+					return API.Q.resolve();
+				}
 
 				API.console.verbose("Fetch '" + url + "'");
 

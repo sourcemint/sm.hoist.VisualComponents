@@ -3,7 +3,7 @@
     "name": "sm.hoist.visualcomponents",
     "version": "0.1.5",
     "repository": "https://github.com/sourcemint/sm.hoist.VisualComponents.git",
-    "main": "sm.hoist",
+    "main": "sm.hoist.js",
     "bin": {
         "sm.hoist.VisualComponents": "./sm.hoist"
     },
