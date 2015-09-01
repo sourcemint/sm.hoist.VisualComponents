@@ -340,6 +340,18 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 					var loaded = [];
 
+					var features = {};
+					if (
+						API.config.resources &&
+						API.config.resources.import === false
+					) {
+						features.FetchExternalResources = false;
+						features.ProcessExternalResources = false;
+					} else {
+						features.FetchExternalResources = ["script", "frame", "iframe", "link"];
+						features.ProcessExternalResources = ["script"];
+					}
+
 			        return API.JSDOM.env({
 			        	url: url,
 			        	headers: {
@@ -348,10 +360,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 			        	scripts: [
 	                    	'file://' + require.resolve("jquery/dist/jquery.js")
                     	],
-                    	features: {
-							FetchExternalResources: ["script", "frame", "iframe", "link"],
-							ProcessExternalResources: ["script"]
-						},
+                    	features: features,
                     	resourceLoader: function (resource, callback) {
 							if (resource.url.host) {
 								loaded.push(resource.url.path);
@@ -386,6 +395,13 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 			}
 
 			function exportResources (originUrl, baseUrl, declarations) {
+
+				if (
+					API.config.resources &&
+					API.config.resources.import === false
+				) {
+					return API.Q.resolve();
+				}
 
 				var baseUrlParsed = API.URL.parse(baseUrl);
 				var basePath = API.PATH.join(targetBaseFsPath, "resources");
@@ -670,9 +686,11 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 						data.push('    <' + component.tag.toLowerCase() + attrs + '>');
 
 						var impl = component.innerHTML;
-						rewrites.forEach(function (rewrite) {
-							impl = impl.replace(rewrite.from, rewrite.to);
-						});
+						if (rewrites) {
+							rewrites.forEach(function (rewrite) {
+								impl = impl.replace(rewrite.from, rewrite.to);
+							});
+						}
 						data.push(impl);
 
 						data.push('    </' + component.tag.toLowerCase() + '>');
@@ -959,10 +977,10 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 						descriptor.pages[pageAlias].resources.push({
 							"type": "css",
 							"uriPath": resource.attributes.href,
-							"fsPath": "{{__DIRNAME__}}/" + API.PATH.relative(
+							"fsPath": (resource.exportPath && ("{{__DIRNAME__}}/" + API.PATH.relative(
 								targetBaseFsPath,
 								resource.exportPath
-							),
+							))) || null,
 							"bundle": (resource.attributes["data-component-bundle"] || "")
 						});
 					} else
@@ -970,10 +988,10 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 						descriptor.pages[pageAlias].resources.push({
 							"type": "js",
 							"uriPath": resource.attributes.src,
-							"fsPath": "{{__DIRNAME__}}/" + API.PATH.relative(
+							"fsPath": (resource.exportPath && ("{{__DIRNAME__}}/" + API.PATH.relative(
 								targetBaseFsPath,
 								resource.exportPath
-							),
+							))) || null,
 							"bundle": (resource.attributes["data-component-bundle"] || "")
 						});
 					}
