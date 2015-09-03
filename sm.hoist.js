@@ -210,6 +210,17 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
                     API.console.verbose("loaded", loaded);
 
+                    // Hide all views
+                    $('[data-component-view]').each(function () {
+						var elm = $(this);
+		    			var visibility = elm.attr("data-component-view-visibility") || null;
+            			if (visibility === "hidden") {
+            				elm.css("visibility", "hidden");
+            			} else {
+            				elm.addClass("hidden");
+            			}
+                    });
+
                     $('[data-component-id]').each(function () {
 
                     	var tag = $(this);
@@ -414,7 +425,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 					if (/^\./.test(url)) {
 						sourceUrl = API.PATH.join(baseUrl, url).replace(/^http:\//, "http://");;
 					} else {
-						throw new Error("Cannot make source url from non-local url '" + url + "'!");
+						throw new Error("Cannot make source url fromnon-local url '" + url + "'!");
 					}
 					var sourceUrlParsed = API.URL.parse(sourceUrl);
 					if (sourceUrlParsed.host !== baseUrlParsed.host) {
