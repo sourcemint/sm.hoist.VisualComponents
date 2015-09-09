@@ -197,78 +197,12 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 			if (!options.build) {
 				return API.Q.resolve();
 			}
-	
-			function writeDescriptorFile (pageDefinitions) {
-	
-				var descriptor = {
-					pages: {}
-				};
-	
-				Object.keys(pageDefinitions).forEach(function (pageAlias) {
-	
-					var declarations = pageDefinitions[pageAlias];
-	
-					descriptor.pages[pageAlias] = {
-						"resources": [],
-						"componentsDescriptorPath": "{{__DIRNAME__}}/components/" + pageAlias + ".json",
-						"components": {}
-					};
-	
-					declarations.resources.forEach(function (resource) {
-						if (
-							resource.tag === "LINK" &&
-							resource.attributes.rel === "stylesheet"
-						) {
-							descriptor.pages[pageAlias].resources.push({
-								"type": "css",
-								"uriPath": resource.attributes.href,
-								"fsPath": (resource.exportPath && ("{{__DIRNAME__}}/" + API.PATH.relative(
-									targetBaseFsPath,
-									resource.exportPath
-								))) || null,
-								"bundle": (resource.attributes["data-component-bundle"] || "")
-							});
-						} else
-						if (resource.tag === "SCRIPT") {
-							descriptor.pages[pageAlias].resources.push({
-								"type": "js",
-								"uriPath": resource.attributes.src,
-								"fsPath": (resource.exportPath && ("{{__DIRNAME__}}/" + API.PATH.relative(
-									targetBaseFsPath,
-									resource.exportPath
-								))) || null,
-								"bundle": (resource.attributes["data-component-bundle"] || "")
-							});
-						}
-					});
-	
-					Object.keys(declarations.components).forEach(function (componentAlias) {
-						descriptor.pages[pageAlias].components[componentAlias] = {
-							"uriHtmlPath": "/" + API.PATH.relative(
-								targetBaseUriPath,
-								declarations.components[componentAlias].exportPath
-							),
-							"fsHtmlPath": "{{__DIRNAME__}}/" + API.PATH.relative(
-								targetBaseFsPath,
-								declarations.components[componentAlias].exportPath
-							)
-						};
-					});
-				});
-	
-				return API.QFS.write(
-					API.PATH.join(targetBaseFsPath, "hoisted.json"),
-					JSON.stringify(descriptor, null, 4)
-				);
-			}
-	
+
 			return start().then(function () {
 	
-				return parsePages().then(function (pageDefinitions) {
+				return parsePages().then(function (descriptor) {
 	
-					API.console.verbose("Page definitions:", JSON.stringify(pageDefinitions, null, 4));
-	
-					return writeDescriptorFile(pageDefinitions);
+					API.console.verbose("Hoisted descriptor:", JSON.stringify(descriptor, null, 4));
 				});
 	
 			}).then(function () {
