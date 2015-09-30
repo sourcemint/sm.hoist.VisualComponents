@@ -11,7 +11,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 	    error: 'red'
 	});
 
-	console.log("Hoist config:", JSON.stringify(API.config, null, 4));
+	console.log("Hoist config:", API.CJSON(API.config, null, 4));
 
 
 	var targetBaseUriPath = API.config.target.path;
@@ -204,6 +204,22 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
                     API.console.verbose("loaded", loaded);
 
+
+                    function addResource (resource) {
+                		// Ensure resource does not already exist.
+                		for (var i=0; i < declarations.resources.length ; i++) {
+                			if (
+                				declarations.resources[i].tag === resource.tag &&
+                				declarations.resources[i].attributes.src === resource.attributes.src
+                			) {
+                				// Resource already exists.
+                				return;
+                			}
+                		}
+                    	declarations.resources.push(resource);
+                    }
+
+
                     $('[component\\3Aid]').each(function () {
 
                     	var tag = $(this);
@@ -228,7 +244,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
                     	declarations.components[id] = {
                     		tag: tag.prop("tagName"),
                     		attributes: attrs,
-                    		innerHTML: componentHtml
+                    		originalInnerHTML: componentHtml
                     	};
                     });
 
@@ -245,7 +261,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							}
 						});
 
-						declarations.resources.push({
+						addResource({
                     		tag: tag.prop("tagName"),
                     		attributes: attrs
 						});
@@ -265,7 +281,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 						// We ignore scripts inserted by jsdom
 						if (attrs.class === "jsdom") return;
 
-						declarations.resources.push({
+						addResource({
                     		tag: tag.prop("tagName"),
                     		attributes: attrs
 						});
@@ -288,7 +304,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							return;
 						}
 
-						declarations.resources.push({
+						addResource({
                     		tag: tag.prop("tagName"),
                     		attributes: attrs
 						});
@@ -402,7 +418,9 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 										var ext = path.pop();
 										path = path.join(".");
 
-										path += "-" + API.CRYPTO.createHash("sha1").update(data).digest("hex").substring(0, 7);
+										var hash = API.CRYPTO.createHash("sha1").update(data).digest("hex").substring(0, 7);
+
+										path += "-" + hash;
 										path += "." + ext;
 
 										return API.QFS.exists(path).then(function (exists) {
@@ -631,10 +649,12 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 						attrs = ((attrs.length > 0)? (" " + attrs.join(" ")) : "");
 						data.push('    <' + component.tag.toLowerCase() + attrs + '>');
 
-						var impl = component.innerHTML;
+						var impl = component.originalInnerHTML;
 						rewrites.forEach(function (rewrite) {
 							impl = impl.replace(rewrite.from, rewrite.to);
 						});
+						component.innerHTML = impl;
+
 						data.push(impl);
 
 						data.push('    </' + component.tag.toLowerCase() + '>');
@@ -642,7 +662,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 						return data.join("\n");
 					}
 
-					function generateHtml (component) {
+					function generateHtml (component, componentHTML) {
 						return API.Q.fcall(function () {
 							var data = [];
 
@@ -650,7 +670,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 							if (component.tag === "HTML") {
 
-								data.push(getComponentHtml());
+								data.push(componentHTML);
 
 							} else {
 
@@ -664,7 +684,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 								data.push('  </head>');
 
 								if (component.tag !== "BODY") data.push('  <body>');
-								data.push(getComponentHtml());
+								data.push(componentHTML);
 								if (component.tag !== "BODY") data.push('  </body>');
 
 								declarations.resources.forEach(function (resource) {
@@ -686,7 +706,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 					    });
 					}
 
-					function generateJSX (component) {
+					function generateJSX (component, componentHTML) {
 						return API.Q.fcall(function () {
 							var data = [];
 							data.push("module.exports = function (Context) {");
@@ -694,7 +714,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 							data.push("  var React = Context.REACT;");
 							data.push("  return (");
 
-							var html = getComponentHtml();
+							var html = componentHTML;
 							html = html.replace(/(<|\s)class(\s*=\s*")/g, "$1className$2");
 							html = html.replace(/(<\s*(?:img|input)\s+[^>]+?)(?:\/)?(\s*>)/g, "$1/$2");
 
@@ -713,7 +733,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 									attributes[camelCase(m2[1])] = m2[2];
 								}
 
-								html = html.replace(m[0], m[1] + "{" + JSON.stringify(attributes) + "}" + m[3]);
+								html = html.replace(m[0], m[1] + "{" + API.CJSON(attributes) + "}" + m[3]);
 							}
 
 							data.push(html);
@@ -729,7 +749,9 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 						declarations.components[alias].exportPaths = {};
 					}
 
-					return generateHtml(component).then(function (data) {
+					var componentHTML = getComponentHtml();
+
+					return generateHtml(component, componentHTML).then(function (data) {
 
 						var targetPath = API.PATH.join(basePath, alias + ".htm");
 
@@ -742,7 +764,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 					}).then(function () {
 
-						return generateJSX(component).then(function (data) {
+						return generateJSX(component, componentHTML).then(function (data) {
 
 							var targetPath = API.PATH.join(basePath, alias + ".cjs.jsx");
 
@@ -792,7 +814,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 								var defintionPath = basePath + ".json";
 
-								return API.QFS.write(defintionPath, JSON.stringify(declarations, null, 4));
+								return API.QFS.write(defintionPath, API.CJSON(declarations, null, 4));
 							});
 						});
 					});
@@ -945,7 +967,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 			return API.QFS.write(
 				API.PATH.join(targetBaseFsPath, "hoisted.json"),
-				JSON.stringify(descriptor, null, 4)
+				API.CJSON(descriptor, null, 4)
 			);
 		}
 
@@ -953,7 +975,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 
 			return parsePages().then(function (pageDefinitions) {
 
-				API.console.verbose("Page definitions:", JSON.stringify(pageDefinitions, null, 4));
+				API.console.verbose("Page definitions:", API.CJSON(pageDefinitions, null, 4));
 
 				return writeDescriptorFile(pageDefinitions);
 			});
