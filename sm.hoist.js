@@ -15,7 +15,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 	});
 	const EXPORT = require("./lib/export").forLib(API);
 
-	console.log("Hoist config:", JSON.stringify(API.config, null, 4));
+	console.log("Hoist config:", API.CJSON(API.config, null, 4));
 
 
 	exports.hoist = function (options) {
@@ -202,7 +202,7 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 	
 				return parsePages().then(function (descriptor) {
 	
-					API.console.verbose("Hoisted descriptor:", JSON.stringify(descriptor, null, 4));
+					API.console.verbose("Hoisted descriptor:", API.CJSON(descriptor, null, 4));
 				});
 	
 			}).then(function () {
