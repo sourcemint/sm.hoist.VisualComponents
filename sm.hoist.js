@@ -813,8 +813,10 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 								pages[alias] = declarations;
 
 								var defintionPath = basePath + ".json";
-
-								return API.QFS.write(defintionPath, API.CJSON(declarations, null, 4));
+								var data = API.CJSON(declarations, null, 4);
+								// Make all internal paths relative
+								data = data.replace(new RegExp('"' + API.PATH.dirname(defintionPath).replace(/\//g, "\\/"), "g"), '"{{__DIRNAME__}}');
+								return API.QFS.write(defintionPath, data);
 							});
 						});
 					});
@@ -965,9 +967,13 @@ require('org.pinf.genesis.lib').forModule(require, module, function (API, export
 				});
 			});
 
+			var data = API.CJSON(descriptor, null, 4);
+			// Make all internal paths relative
+			data = data.replace(new RegExp('"' + targetBaseFsPath.replace(/\//g, "\\/"), "g"), '"{{__DIRNAME__}}');
+
 			return API.QFS.write(
 				API.PATH.join(targetBaseFsPath, "hoisted.json"),
-				API.CJSON(descriptor, null, 4)
+				data
 			);
 		}
 
